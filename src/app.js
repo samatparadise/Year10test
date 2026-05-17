@@ -1,6 +1,8 @@
 import { curriculum } from './vcaaCurriculum.js';
 
-const QUESTION_COUNT = 6;
+const QUESTION_COUNT = 10;
+const PRACTICE_POOL_SIZE = 100;
+const RECENT_HISTORY_LIMIT = 40;
 
 const state = {
   subjectId: 'maths',
@@ -9,27 +11,67 @@ const state = {
   submitted: false,
   showAuth: false,
   quiz: null,
+  recentQuestionIds: {},
 };
 
 function shuffle(items) {
   return [...items].sort(() => Math.random() - 0.5);
 }
 
+function rotateOptions(question, offset) {
+  const options = [...question.options];
+  const rotated = [...options.slice(offset % options.length), ...options.slice(0, offset % options.length)];
+  return rotated;
+}
+
+function buildPracticePool(baseQuestions) {
+  const promptFrames = [
+    (prompt) => prompt,
+    (prompt) => `Quick check: ${prompt}`,
+    (prompt) => `Apply the idea: ${prompt}`,
+    (prompt) => `Revision question: ${prompt}`,
+    (prompt) => `Confidence builder: ${prompt}`,
+  ];
+
+  return Array.from({ length: PRACTICE_POOL_SIZE }, (_, index) => {
+    const baseQuestion = baseQuestions[index % baseQuestions.length];
+    const frame = promptFrames[index % promptFrames.length];
+    return {
+      ...baseQuestion,
+      id: `${baseQuestion.id}-practice-${index + 1}`,
+      originalId: baseQuestion.id,
+      prompt: frame(baseQuestion.prompt),
+      options: rotateOptions(baseQuestion, index),
+    };
+  });
+}
+
 function buildQuiz(subjectId, levelId) {
   const subject = curriculum.subjects.find((item) => item.id === subjectId);
   const level = subject.levels.find((item) => item.id === levelId);
-  const questionPool = subject.strands.flatMap((strand) =>
+  const baseQuestions = subject.strands.flatMap((strand) =>
     strand.topics.flatMap((topic) =>
       topic.questions
         .filter((question) => question.level === levelId)
         .map((question) => ({ ...question, strand: strand.name, topic: topic.name }))
     )
   );
+  const historyKey = `${subjectId}-${levelId}`;
+  const recentIds = state.recentQuestionIds[historyKey] || [];
+  const practicePool = buildPracticePool(baseQuestions);
+  const freshQuestions = shuffle(practicePool).filter((question) => !recentIds.includes(question.id));
+  const fallbackQuestions = shuffle(practicePool);
+  const questions = [...freshQuestions, ...fallbackQuestions]
+    .filter((question, index, list) => list.findIndex((item) => item.id === question.id) === index)
+    .slice(0, QUESTION_COUNT);
+
+  const selectedIds = questions.map((question) => question.id);
+  state.recentQuestionIds[historyKey] = [...selectedIds, ...recentIds].slice(0, RECENT_HISTORY_LIMIT);
 
   return {
     subject,
     level,
-    questions: shuffle(questionPool).slice(0, QUESTION_COUNT),
+    questions,
   };
 }
 
@@ -60,20 +102,21 @@ function render() {
     <main>
       <header class="hero">
         <nav>
-          <div class="brand">${icon('✨')} Year 10 Quiz Studio</div>
+          <div class="brand"><span class="trafficLights"><i></i><i></i><i></i></span> Year 10 Quiz Studio</div>
           <button class="ghost" data-action="show-auth">${icon('👤')} Sign in / Sign up</button>
         </nav>
         <section class="heroGrid">
           <div>
             <p class="eyebrow">Victoria Year 10 learning practice</p>
-            <h1>Student-friendly Science and Maths quizzes, constrained to the included VCAA-aligned curriculum map.</h1>
-            <p class="lede">Choose a subject and difficulty, answer without logging in, then generate a fresh quiz when you finish. Signing in is optional and reserved for saving results later.</p>
+            <h1>Focused Year 10 practice that feels calm, clear and fast.</h1>
+            <p class="lede">Choose Science or Maths, pick a level, and complete a fresh 10-question set without logging in. Optional accounts can save results later.</p>
             <div class="notice">${icon('🔒')} No account needed to practise. Quiz questions are selected only from the local curriculum dataset.</div>
           </div>
           <div class="panel stats">
             <div><strong>2</strong><span>Subjects</span></div>
             <div><strong>2</strong><span>Difficulty levels</span></div>
-            <div><strong>${QUESTION_COUNT}</strong><span>Questions per quiz</span></div>
+            <div><strong>${QUESTION_COUNT}</strong><span>Questions each round</span></div>
+            <div><strong>${PRACTICE_POOL_SIZE}</strong><span>Practice variants</span></div>
           </div>
         </section>
       </header>
