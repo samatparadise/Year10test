@@ -19,6 +19,10 @@ The included data is a compact VCAA-aligned sample scope for prototyping and sho
 
 ## Run locally
 
+This project now works directly on GitHub Pages without a build step. You can upload the repository files and serve `index.html` from the repository root.
+
+For local Vite development, install Node.js first, then run:
+
 ```bash
 npm install
 npm run dev
